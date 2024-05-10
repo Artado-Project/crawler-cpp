@@ -225,11 +225,12 @@ struct site_info visit_page(std::string url)
     CURL *curl = curl_easy_init();
 
     if (curl) {
-        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-
         std::string content;
+
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &content);
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, "CaBot/0.1");
 
         CURLcode res = curl_easy_perform(curl);
 
