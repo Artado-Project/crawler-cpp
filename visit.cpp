@@ -20,6 +20,16 @@ using elfunc = void(*)(struct site_info*, xmlNodePtr);
 uint16_t debug_level = DBG_INFO;
 
 #pragma region utilities
+bool startswithcase(const std::string& str, const std::string& prefix) {
+    if (str.length() < prefix.length()) {
+        return false;
+    }
+
+    return std::equal(prefix.begin(), prefix.end(), str.begin(), [](char a, char b) {
+        return std::tolower(a) == std::tolower(b);
+    });
+}
+
 std::string get_base_url(const std::string& full_url) {
     size_t scheme_end = full_url.find("://");
     if (scheme_end == std::string::npos) {
@@ -215,6 +225,66 @@ void process_node(struct site_info* siteinfo, xmlNodePtr node, int indent) {
     xmlFree(lang_attr);
 }
 #pragma endregion
+#pragma region robots.txt
+struct robots_txt visit_robotstxt(CURL *curl, std::string robotstxt_url)
+{
+    struct robots_txt ret_value;
+    std::string content;
+
+    curl_easy_setopt(curl, CURLOPT_URL, robotstxt_url.c_str());
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &content);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "ArtadoBot/0.1");
+
+    CURLcode res = curl_easy_perform(curl);
+
+    if (res != CURLE_OK) {
+        std::cerr << "curl_easy_perform() failed: " << curl_easy_strerror(res) << std::endl;
+    } else {
+        int http_code;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+        if (http_code != 200)
+        {
+            std::cout << "Status for robots.txt: " << http_code << " (not 200 OK)" << std::endl;
+            return ret_value;
+        }
+        ret_value.exists = true;
+        std::istringstream robots(content);
+        std::string line;
+        bool ua_match = false;
+        while (getline(robots, line)) {
+            trim(line);
+            if (startswithcase(line, "user-agent:"))
+            {
+                ua_match = false;
+                std::string ua = line.substr(11);
+                trim(ua);
+                if (EQCS(ua.c_str(), "artadobot") || ua == "*")
+                    ua_match = true;
+            }
+            else if (ua_match && startswithcase(line, "disallow:"))
+            {
+                std::string path = line.substr(9);
+                trim(path);
+                if (path != "")
+                {
+                    ret_value.disallowed_urls.push_back(make_absolute_url(get_base_url(robotstxt_url), path));
+                }
+            }
+        }
+    }
+    return ret_value;
+}
+bool robots_allowed(struct site_info *siteinfo, std::string url)
+{
+    for (std::string disurl : siteinfo->robots.disallowed_urls)
+    {
+        if (startswithcase(url, disurl))
+            return false;
+    }
+    return true;
+}
+#pragma endregion
 #pragma region visit page
 struct site_info visit_page(std::string url)
 {
@@ -225,22 +295,34 @@ struct site_info visit_page(std::string url)
     CURL *curl = curl_easy_init();
 
     if (curl) {
+        ret_value.robots = visit_robotstxt(curl, get_base_url(url) + "/robots.txt");
+        if (!robots_allowed(&ret_value, url))
+        {
+            std::cout << "ArtadoBot is not allowed at " << url << " address." << std::endl;
+            ret_value.status = -0xA97AD0;
+            return ret_value;
+        }
+
         std::string content;
 
         curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &content);
-        curl_easy_setopt(curl, CURLOPT_USERAGENT, "CaBot/0.1");
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, "ArtadoBot/0.1");
 
         CURLcode res = curl_easy_perform(curl);
 
         if (res != CURLE_OK) {
             std::cerr << "curl_easy_perform() failed: " << curl_easy_strerror(res) << std::endl;
         } else {
-            if (debug_level & DBG_CONT)
+            curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &ret_value.status);
+            if (ret_value.status != 200)
             {
-                std::cout << content << std::endl;
+                std::cout << "Status: " << ret_value.status << " (not 200 OK)" << std::endl;
+                return ret_value;
             }
+            if (debug_level & DBG_CONT)
+                std::cout << content << std::endl;
 
             htmlDocPtr doc = htmlReadMemory(content.c_str(), content.size(), NULL, NULL, HTML_PARSE_NOBLANKS | HTML_PARSE_NOERROR | HTML_PARSE_NOWARNING);
             xmlNodePtr root = xmlDocGetRootElement(doc);

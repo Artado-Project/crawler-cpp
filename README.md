@@ -1,4 +1,4 @@
-# cabot
+# artadobot
 This crawler requires `libcurl` and `libxml2` to run
 
 ## Compiling
@@ -9,5 +9,5 @@ make
 
 ## Testing
 ```
-./cabot <url>
+./artadobot <url>
 ```
