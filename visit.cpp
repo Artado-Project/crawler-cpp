@@ -7,17 +7,14 @@
 #include <map>
 #include <algorithm>
 #include <sstream>
+#include <fstream>
+#include <chrono>
+#include <filesystem>
 #include "core.hpp"
 
 #define EQCS(str1, str2) (!xmlStrcasecmp((xmlChar *)str1, (xmlChar *)str2))
 
-#define DBG_CONT 1
-#define DBG_RECR 2
-#define DBG_INFO 4
-
 using elfunc = void(*)(struct site_info*, xmlNodePtr);
-
-uint16_t debug_level = DBG_INFO;
 
 #pragma region utilities
 bool startswithcase(const std::string& str, const std::string& prefix) {
@@ -33,16 +30,25 @@ bool startswithcase(const std::string& str, const std::string& prefix) {
 std::string get_base_url(const std::string& full_url) {
     size_t scheme_end = full_url.find("://");
     if (scheme_end == std::string::npos) {
-        // if there is no scheme, assume it might still be a URL starting directly with a domain
         scheme_end = 0;
     } else {
         scheme_end += 3;
     }
 
     size_t base_end = full_url.find_first_of("/?#", scheme_end);
-    if (base_end == std::string::npos) {
-        return full_url;
+
+    return full_url.substr(scheme_end, base_end);
+}
+
+std::string get_base_url_scheme(const std::string& full_url) {
+    size_t scheme_end = full_url.find("://");
+    if (scheme_end == std::string::npos) {
+        scheme_end = 0;
+    } else {
+        scheme_end += 3;
     }
+
+    size_t base_end = full_url.find_first_of("/?#", scheme_end);
 
     return full_url.substr(0, base_end);
 }
@@ -53,10 +59,26 @@ bool is_absolute_url(const std::string& url) {
 
 std::string make_absolute_url(const std::string& base_url, const std::string& relative_url) {
     if (relative_url.starts_with("/")) {
-        return get_base_url(base_url) + relative_url;
+        return get_base_url_scheme(base_url) + relative_url;
     } else {
         return base_url + '/' + relative_url;
     }
+}
+
+// This has to be strict to make sure there aren't duplicate URLs.
+std::string get_normalized_url(const std::string& base_url, const std::string& full_url) {
+    std::string normalized_url = full_url;
+    if (!is_absolute_url(normalized_url)) {
+        normalized_url = make_absolute_url(base_url, normalized_url);
+    }
+    size_t base_end = normalized_url.find_first_of("#", 0);
+
+    normalized_url = normalized_url.substr(0, base_end);
+    if (!normalized_url.empty() && normalized_url.back() != '/') {
+        normalized_url += '/';
+    }
+
+    return normalized_url;
 }
 
 void trim(std::string &str){
@@ -72,11 +94,16 @@ void trim(std::string &str){
     str = str.substr(0,i+1);
 }
 
-// callback function for libcurl to write received data
+// Callback function for libcurl to write received data
 size_t write_data(void *contents, size_t size, size_t nmemb, std::string *data) {
     size_t totalSize = size * nmemb;
     data->append((char*)contents, totalSize);
     return totalSize;
+}
+
+size_t write_data_file(void *contents, size_t size, size_t nmemb, FILE *file) {
+    size_t written = fwrite(contents, size, nmemb, file);
+    return written;
 }
 #pragma endregion
 #pragma region element handlers
@@ -98,11 +125,11 @@ void element_meta(struct site_info *siteinfo, xmlNodePtr cn) {
     xmlChar* content_attr = xmlGetProp(cn, (const xmlChar *)"content");
 
     if (name_attr && content_attr) {
-        if (EQCS(name_attr, "description")) { // description
+        if (EQCS(name_attr, "description")) {
             std::string content = (char *)content_attr;
             trim(content);
             siteinfo->description = content;
-        } else if (EQCS(name_attr, "keywords")) { // keywords
+        } else if (EQCS(name_attr, "keywords")) {
             std::istringstream keywordStream((char *)content_attr);
             std::string keyword;
             while (getline(keywordStream, keyword, ',')) {
@@ -114,7 +141,7 @@ void element_meta(struct site_info *siteinfo, xmlNodePtr cn) {
 
     xmlChar* http_equiv_attr = xmlGetProp(cn, (const xmlChar *)"http-equiv");
     if (http_equiv_attr) {
-        if (EQCS(http_equiv_attr, "content-language") && content_attr) { // language
+        if (EQCS(http_equiv_attr, "content-language") && content_attr) {
             siteinfo->language = (char*)content_attr;
         }
     }
@@ -149,7 +176,7 @@ void element_link(struct site_info *siteinfo, xmlNodePtr cn) {
                 siteinfo->icons.push_back(icon);
             }
         } else {
-            siteinfo->links.push_back(href);
+            siteinfo->links.insert(get_normalized_url(siteinfo->url, href));
         }
     }
 
@@ -168,17 +195,14 @@ void element_a(struct site_info *siteinfo, xmlNodePtr cn) {
         bool is_nofollow = false;
         if (rel_attr) {
             std::string rel_value = (char*)rel_attr;
-            // transform to lowercase for the func find
+            // Transform to lowercase for .find()
             std::transform(rel_value.begin(), rel_value.end(), rel_value.begin(), ::tolower);
             is_nofollow = rel_value.find("nofollow") != std::string::npos;
         }
 
         if (!is_nofollow) {
             std::string url = (char*)href_attr;
-            if (!is_absolute_url(url)) {
-                url = make_absolute_url(siteinfo->url, url);
-            }
-            siteinfo->links.push_back(url);
+            siteinfo->links.insert(get_normalized_url(siteinfo->url, url));
         }
 
         xmlFree(href_attr);
@@ -229,52 +253,67 @@ void process_node(struct site_info* siteinfo, xmlNodePtr node, int indent) {
 struct robots_txt visit_robotstxt(CURL *curl, std::string robotstxt_url)
 {
     struct robots_txt ret_value;
-    std::string content;
 
-    curl_easy_setopt(curl, CURLOPT_URL, robotstxt_url.c_str());
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &content);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "ArtadoBot/0.1");
+    std::string cache_file_path = "./.artadobot_cache/robots/" + get_base_url(robotstxt_url) + ".txt";
 
-    CURLcode res = curl_easy_perform(curl);
-
-    if (res != CURLE_OK) {
-        std::cerr << "curl_easy_perform() failed: " << curl_easy_strerror(res) << std::endl;
-    } else {
-        int http_code;
-        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-        if (http_code != 200)
-        {
-            std::cout << "Status for robots.txt: " << http_code << " (not 200 OK)" << std::endl;
+    if (!std::filesystem::exists(cache_file_path))
+    {
+        FILE* cache_file = fopen(cache_file_path.c_str(), "w");
+        if (!cache_file) {
+            std::cerr << "Failed to open cache file " << "./.artadobot_cache/robots/" + get_base_url(robotstxt_url) + ".txt" << std::endl;
             return ret_value;
         }
-        ret_value.exists = true;
-        std::istringstream robots(content);
-        std::string line;
-        bool ua_match = false;
-        while (getline(robots, line)) {
-            trim(line);
-            if (startswithcase(line, "user-agent:"))
+
+        curl_easy_setopt(curl, CURLOPT_URL, robotstxt_url.c_str());
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data_file);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, cache_file);
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, "ArtadoBot/0.1");
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+
+        CURLcode res = curl_easy_perform(curl);
+
+        fclose(cache_file);
+        if (res != CURLE_OK) {
+            std::cerr << "curl_easy_perform() failed: " << curl_easy_strerror(res) << std::endl;
+            return ret_value;
+        }
+        long http_code;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+
+        if (http_code != 200)
+        {
+            std::cerr << "Status for " << robotstxt_url << ": " << http_code << " (not 200 OK)" << std::endl;
+            return ret_value;
+        }
+    }
+
+    ret_value.exists = true;
+    std::ifstream robots(cache_file_path);
+    std::string line;
+    bool ua_match = false;
+    while (getline(robots, line)) {
+        trim(line);
+        if (startswithcase(line, "user-agent:"))
+        {
+            ua_match = false;
+            std::string ua = line.substr(11);
+            trim(ua);
+            if (EQCS(ua.c_str(), "artadobot") || ua == "*")
+                ua_match = true;
+        }
+        else if (ua_match && startswithcase(line, "disallow:"))
+        {
+            std::string path = line.substr(9);
+            trim(path);
+            if (path != "")
             {
-                ua_match = false;
-                std::string ua = line.substr(11);
-                trim(ua);
-                if (EQCS(ua.c_str(), "artadobot") || ua == "*")
-                    ua_match = true;
-            }
-            else if (ua_match && startswithcase(line, "disallow:"))
-            {
-                std::string path = line.substr(9);
-                trim(path);
-                if (path != "")
-                {
-                    ret_value.disallowed_urls.push_back(make_absolute_url(get_base_url(robotstxt_url), path));
-                }
+                ret_value.disallowed_urls.push_back(make_absolute_url(get_base_url(robotstxt_url), path));
             }
         }
     }
     return ret_value;
 }
+
 bool robots_allowed(struct site_info *siteinfo, std::string url)
 {
     for (std::string disurl : siteinfo->robots.disallowed_urls)
@@ -290,6 +329,7 @@ struct site_info visit_page(std::string url)
 {
     struct site_info ret_value;
     ret_value.url = url;
+    ret_value.visit_time = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 
     curl_global_init(CURL_GLOBAL_ALL);
     CURL *curl = curl_easy_init();
@@ -298,7 +338,7 @@ struct site_info visit_page(std::string url)
         ret_value.robots = visit_robotstxt(curl, get_base_url(url) + "/robots.txt");
         if (!robots_allowed(&ret_value, url))
         {
-            std::cout << "ArtadoBot is not allowed at " << url << " address." << std::endl;
+            std::cerr << "ArtadoBot is not allowed at " << url << " address." << std::endl;
             ret_value.status = -0xA97AD0;
             return ret_value;
         }
@@ -309,6 +349,7 @@ struct site_info visit_page(std::string url)
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &content);
         curl_easy_setopt(curl, CURLOPT_USERAGENT, "ArtadoBot/0.1");
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
 
         CURLcode res = curl_easy_perform(curl);
 
@@ -318,7 +359,7 @@ struct site_info visit_page(std::string url)
             curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &ret_value.status);
             if (ret_value.status != 200)
             {
-                std::cout << "Status: " << ret_value.status << " (not 200 OK)" << std::endl;
+                std::cerr << "Status for " << url << ": " << ret_value.status << " (not 200 OK)" << std::endl;
                 return ret_value;
             }
             if (debug_level & DBG_CONT)
@@ -336,32 +377,6 @@ struct site_info visit_page(std::string url)
         exit(1);
     }
     curl_global_cleanup();
-
-    if (debug_level & DBG_INFO)
-    {
-        std::cout << "Title: " << ret_value.title << std::endl;
-        std::cout << "Description: " << ret_value.description << std::endl;
-        std::cout << "Language: " << ret_value.language << std::endl;
-        std::cout << "Keywords: ";
-        for(auto keyword : ret_value.keywords)
-        {
-            std::cout << keyword << " ";
-        }
-        std::cout << std::endl;
-        std::cout << "Icons: " << std::endl;
-        for(auto icon : ret_value.icons)
-        {
-            std::cout << "  Icon: " << std::endl;
-            std::cout << "    Link: " << icon.src << std::endl;
-            std::cout << "    Size: " << icon.size << std::endl;
-            std::cout << "    Type: " << icon.type << std::endl;
-        }
-        std::cout << "Links: " << std::endl;
-        for(auto link : ret_value.links)
-        {
-            std::cout << "  " << link << std::endl;
-        }
-    }
     return ret_value;
 }
 #pragma endregion

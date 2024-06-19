@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <vector>
+#include <set>
 
 struct site_icon {
     std::string src = "unknown";
@@ -14,7 +15,7 @@ struct robots_txt {
 };
 
 struct site_info {
-    int status; // special codes:
+    long status; // special codes:
                 // * -0xA97AD0 - artadobot is not allowed
     std::string url = "unknown";
     std::string title = "unknown";
@@ -22,6 +23,14 @@ struct site_info {
     std::string language = "unknown";
     std::vector<std::string> keywords;
     std::vector<struct site_icon> icons;
-    std::vector<std::string> links;
+    std::set<std::string> links;
     struct robots_txt robots;
+    long long visit_time;
 };
+
+#define DBG_CONT 1
+#define DBG_RECR 2
+#define DBG_INFO 4
+#define DBG_QUEUE 8
+
+extern uint16_t debug_level;
