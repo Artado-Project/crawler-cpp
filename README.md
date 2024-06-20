@@ -1,6 +1,13 @@
 # artadobot
 This crawler requires `libcurl` and `libxml2` to run
 
+## Configuring
+Edit the `config.hpp` file according to your preferences.
+
+| Option | Description |
+| ------ | ----------- |
+| `CRAWLER_NAME` | Your crawler's name that will be shown in the user-agent. |
+
 ## Compiling
 ```
 cmake .
@@ -9,7 +16,7 @@ make
 
 ## Testing
 ```
-./artadobot <url> <depth>
+./crawler <url> <depth>
 ```
 
 ## Debug Options

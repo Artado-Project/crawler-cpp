@@ -11,6 +11,7 @@
 #include <chrono>
 #include <filesystem>
 #include "core.hpp"
+#include "config.hpp"
 
 #define EQCS(str1, str2) (!xmlStrcasecmp((xmlChar *)str1, (xmlChar *)str2))
 
@@ -254,20 +255,20 @@ struct robots_txt visit_robotstxt(CURL *curl, std::string robotstxt_url)
 {
     struct robots_txt ret_value;
 
-    std::string cache_file_path = "./.artadobot_cache/robots/" + get_base_url(robotstxt_url) + ".txt";
+    std::string cache_file_path = "."CRAWLER_NAME"_cache/robots/" + get_base_url(robotstxt_url) + ".txt";
 
     if (!std::filesystem::exists(cache_file_path))
     {
         FILE* cache_file = fopen(cache_file_path.c_str(), "w");
         if (!cache_file) {
-            std::cerr << "Failed to open cache file " << "./.artadobot_cache/robots/" + get_base_url(robotstxt_url) + ".txt" << std::endl;
+            std::cerr << "Failed to open cache file " << "."CRAWLER_NAME"_cache/robots/" + get_base_url(robotstxt_url) + ".txt" << std::endl;
             return ret_value;
         }
 
         curl_easy_setopt(curl, CURLOPT_URL, robotstxt_url.c_str());
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data_file);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, cache_file);
-        curl_easy_setopt(curl, CURLOPT_USERAGENT, "ArtadoBot/0.1");
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, CRAWLER_NAME"/0.1");
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
 
         CURLcode res = curl_easy_perform(curl);
@@ -298,7 +299,7 @@ struct robots_txt visit_robotstxt(CURL *curl, std::string robotstxt_url)
             ua_match = false;
             std::string ua = line.substr(11);
             trim(ua);
-            if (EQCS(ua.c_str(), "artadobot") || ua == "*")
+            if (EQCS(ua.c_str(), CRAWLER_NAME) || ua == "*")
                 ua_match = true;
         }
         else if (ua_match && startswithcase(line, "disallow:"))
@@ -338,7 +339,7 @@ struct site_info visit_page(std::string url)
         ret_value.robots = visit_robotstxt(curl, get_base_url(url) + "/robots.txt");
         if (!robots_allowed(&ret_value, url))
         {
-            std::cerr << "ArtadoBot is not allowed at " << url << " address." << std::endl;
+            std::cerr << CRAWLER_NAME" is not allowed at " << url << " address." << std::endl;
             ret_value.status = -0xA97AD0;
             return ret_value;
         }
@@ -348,7 +349,7 @@ struct site_info visit_page(std::string url)
         curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &content);
-        curl_easy_setopt(curl, CURLOPT_USERAGENT, "ArtadoBot/0.1");
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, CRAWLER_NAME"/0.1");
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
 
         CURLcode res = curl_easy_perform(curl);

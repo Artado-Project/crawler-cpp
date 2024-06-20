@@ -16,7 +16,7 @@ struct robots_txt {
 
 struct site_info {
     long status; // special codes:
-                // * -0xA97AD0 - artadobot is not allowed
+                // * -0xA97AD0 - crawler is not allowed
     std::string url = "unknown";
     std::string title = "unknown";
     std::string description = "unknown";

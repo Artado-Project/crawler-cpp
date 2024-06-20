@@ -3,6 +3,7 @@
 #include <queue>
 #include "core.hpp"
 #include "visit.hpp"
+#include "config.hpp"
 
 #pragma region run queue
 std::pair<std::queue<std::string>, std::vector<struct site_info>> run_queue(std::queue<std::string> queue)

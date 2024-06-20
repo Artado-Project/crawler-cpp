@@ -3,6 +3,7 @@
 #include <filesystem>
 #include "core.hpp"
 #include "queue.hpp"
+#include "config.hpp"
 
 int main(int argc, char *argv[]) {
     debug_level = 0;
@@ -12,8 +13,8 @@ int main(int argc, char *argv[]) {
     }
 
     std::vector<std::string> cache_directories = {
-        ".artadobot_cache",
-        ".artadobot_cache/robots",
+        "."CRAWLER_NAME"_cache",
+        "."CRAWLER_NAME"_cache/robots",
     };
     for(auto path : cache_directories)
     {
