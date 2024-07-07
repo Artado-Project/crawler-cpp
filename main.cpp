@@ -15,8 +15,10 @@
 #include <iostream>
 #include <string>
 #include <filesystem>
+#include <sql.h>
 #include "core.hpp"
 #include "queue.hpp"
+#include "db.hpp"
 #include "config.hpp"
 
 int main(int argc, char *argv[]) {
@@ -27,8 +29,8 @@ int main(int argc, char *argv[]) {
     }
 
     std::vector<std::string> cache_directories = {
-        "."CRAWLER_NAME"_cache",
-        "."CRAWLER_NAME"_cache/robots",
+        "." CRAWLER_NAME "_cache",
+        "." CRAWLER_NAME "_cache/robots",
     };
     for(auto path : cache_directories)
     {
@@ -43,8 +45,17 @@ int main(int argc, char *argv[]) {
             }
         } catch (const std::filesystem::filesystem_error& e) {
             std::cerr << "Filesystem error: " << e.what() << std::endl;
+            return 1;
         }
     }
+
+    SQLRETURN db_ret = sql_initialize();
+    if (SQL_FAILED(db_ret))
+    {
+        std::cerr << "Database error: " << db_ret << std::endl;
+        return 1;
+    }
+    sql_cleanup();
 
     std::string url = argv[1];
     int depth = std::stoi(argv[2]);

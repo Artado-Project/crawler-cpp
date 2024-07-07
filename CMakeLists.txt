@@ -26,7 +26,18 @@ include_directories(${CURL_INCLUDE_DIRS})
 find_package(LibXml2 REQUIRED)
 include_directories(${LIBXML2_INCLUDE_DIR})
 
-add_executable(crawler main.cpp visit.cpp visit.hpp queue.cpp queue.hpp core.cpp core.hpp config.hpp)
+find_library(ODBC_LIBRARY NAMES odbc32 odbc)
+find_path(ODBC_INCLUDE_DIR sql.h)
+if (ODBC_LIBRARY AND ODBC_INCLUDE_DIR)
+    message(STATUS "Found ODBC library: ${ODBC_LIBRARY}")
+    message(STATUS "Found ODBC include directory: ${ODBC_INCLUDE_DIR}")
+else()
+    message(FATAL_ERROR "ODBC library or include directory not found")
+endif()
+include_directories(${ODBC_INCLUDE_DIR})
+
+
+add_executable(crawler main.cpp visit.cpp visit.hpp queue.cpp queue.hpp core.cpp core.hpp config.hpp db.cpp db.hpp)
 
 if(MSVC)
   target_compile_options(crawler PRIVATE /W4 /WX)
@@ -34,4 +45,4 @@ else()
   target_compile_options(crawler PRIVATE -Wall -Wextra -Wpedantic -Wno-unknown-pragmas)
 endif()
 
-target_link_libraries(crawler ${CURL_LIBRARIES} ${LIBXML2_LIBRARIES})
+target_link_libraries(crawler ${CURL_LIBRARIES} ${LIBXML2_LIBRARIES} ${ODBC_LIBRARY})

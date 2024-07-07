@@ -2,14 +2,30 @@
 A crawler made for Artado Search.
 
 ## Configuring
-Edit the `config.hpp` file according to your preferences.
+Rename `config.example.hpp` to `config.hpp` and edit it according to your preferences.
 
 | Option | Description |
 | ------ | ----------- |
 | `CRAWLER_NAME` | Your crawler's name that will appear in the user-agent. |
+| `MSSQL_DRIVER` | The ODBC driver that you'll use. |
+| `MSSQL_SERVER` | Your data source. |
+| `MSSQL_DATABASE` | The name of your database. |
+| `MSSQL_USERNAME` | The name for authorization in your database. |
+| `MSSQL_PASSWORD` | The password for authorization in your database. |
+| `MSSQL_CONNECTION_STRING` | Do NOT touch this! The connection string for your database data. |
+
+## Database
+Table `WebResults`:
+* `ID (PK, int, not null)`
+* `Title (nvarchar(max), null)`
+* `Description (nvarchar(max), null)`
+* `Keywords (nvarchar(max), null)`
+* `Rank (nvarchar(max), null)`
+* `Lang (nvarchar(max), null)`
+* `URL (nvarchar(max), null)`
 
 ## Compiling
-This crawler requires `libcurl` and `libxml2` to run
+This crawler requires `libcurl`, `libxml2` and [ODBC Driver](https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server) to run.
 ```
 cmake .
 make
@@ -35,6 +51,7 @@ These options can be set in `main.cpp` on the line `debug_level = 0;` by or'ing 
 - [ ] Save page data
 - [x] Recursively browse pages
 - [ ] Save queue
+- [ ] Download images
 - [ ] Optimizations
   - [x] Cache robots.txt files for websites
   - [ ] Save visit time for websites and check visit time of pages to not visit the same pages for 30 days

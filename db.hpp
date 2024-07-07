@@ -13,10 +13,9 @@
 // You should have received a copy of the GNU General Public License along with
 // ArtadoBot Crawler. If not, see <https://www.gnu.org/licenses/>.
 #pragma once
-#define CRAWLER_NAME "ArtadoBot"
-#define MSSQL_DRIVER "ODBC Driver 18 for SQL Server"
-#define MSSQL_SERVER "256.257.258.259\\MSSQLSERVER2019"
-#define MSSQL_DATABASE "artado_search_or_something_idk"
-#define MSSQL_USERNAME "listen_to_the_song_called_angels_of_the_fruit"
-#define MSSQL_PASSWORD "mywifesbirthday"
-#define MSSQL_CONNECTION_STRING "Driver={" MSSQL_DRIVER "};Server=" MSSQL_SERVER ";Database=" MSSQL_DATABASE ";UID=" MSSQL_USERNAME ";PWD=" MSSQL_PASSWORD ";TrustServerCertificate=yes;"
+#include <sql.h>
+
+#define SQL_FAILED(rc) (((rc) & (~1)) != 0)
+
+SQLRETURN sql_initialize();
+void sql_cleanup();

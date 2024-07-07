@@ -269,13 +269,13 @@ struct robots_txt visit_robotstxt(CURL *curl, std::string robotstxt_url)
 {
     struct robots_txt ret_value;
 
-    std::string cache_file_path = "."CRAWLER_NAME"_cache/robots/" + get_base_url(robotstxt_url) + ".txt";
+    std::string cache_file_path = "." CRAWLER_NAME "_cache/robots/" + get_base_url(robotstxt_url) + ".txt";
 
     if (!std::filesystem::exists(cache_file_path))
     {
         FILE* cache_file = fopen(cache_file_path.c_str(), "w");
         if (!cache_file) {
-            std::cerr << "Failed to open cache file " << "."CRAWLER_NAME"_cache/robots/" + get_base_url(robotstxt_url) + ".txt" << std::endl;
+            std::cerr << "Failed to open cache file " << "." CRAWLER_NAME "_cache/robots/" + get_base_url(robotstxt_url) + ".txt" << std::endl;
             return ret_value;
         }
 
